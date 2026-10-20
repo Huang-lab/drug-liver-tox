@@ -1,0 +1,28 @@
+# Normalize line endings so a Windows checkout does not produce a whole-file diff.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text diff=python
+*.R    text
+*.r    text
+*.rs   text diff=rust
+*.md   text diff=markdown
+
+# Binary: never try to merge or diff these.
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.gz   binary
+*.rds  binary
+*.RData binary
+*.h5   binary
+*.parquet binary
+
+# Notebooks. If you use the nbbuild pattern (notebooks generated from
+# builders/*.py), the Python source is the review target and the notebook is a
+# build artifact - marking it linguist-generated collapses it in PR diffs.
+*.ipynb linguist-generated=true
+
+# Committed frozen results are data, not code - keep them out of the language
+# stats and out of review diffs.
+results-*/** linguist-vendored=true

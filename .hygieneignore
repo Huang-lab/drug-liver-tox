@@ -1,0 +1,13 @@
+# Exact paths exempt from scripts/check_hygiene.sh, one per line.
+# Keep this list short and justify each entry in a comment.
+
+# The secret-detection test's fixtures are, necessarily, the strings the
+# detectors look for - a PEM header, a quoted credential, a /Users path. They
+# are synthetic and they are the point of the file. Exempting it here rather
+# than obfuscating the fixtures keeps the test readable, and exercises the
+# .hygieneignore mechanism on the one file that genuinely needs it.
+#
+# (The first draft of this comment quoted one of the fixtures verbatim and the
+# credential rule flagged this file. Left as a note because that is the rule
+# working, and because a comment should not need its own exemption.)
+tests/test_secret_patterns.sh

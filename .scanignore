@@ -1,0 +1,5 @@
+# Pathspecs excluded from scripts/scan_history.sh content scanning.
+# Docs that quote cluster paths as examples; fixtures with synthetic identifiers.
+data/README.md
+results/README.md
+CONVENTIONS.md

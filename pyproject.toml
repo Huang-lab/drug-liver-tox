@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drug-liver-toxicity"
+version = "0.1.0"
+description = "Starter project for drug-specific liver toxicity research workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "numpy",
+    "statsmodels",
+    "scikit-learn",
+]
+
+[tool.setuptools]
+packages = ["drug_liver_toxicity"]
