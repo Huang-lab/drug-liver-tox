@@ -24,8 +24,15 @@ def execute_sql(
                 job = job.result()
             if hasattr(job, "to_dataframe"):
                 return job.to_dataframe()
+            if hasattr(job, "to_arrow"):
+                return job.to_arrow().to_pandas()
+            if hasattr(job, "rows") and hasattr(job, "schema"):
+                return pd.DataFrame(job.result().rows)
         except Exception:
-            pass
+            # BigQuery should not fall back to SQLite/pandas, because a Client
+            # object is not a DBAPI connection and will fail with a cursor error.
+            # Surface the real BigQuery issue instead of masking it.
+            raise
 
     try:
         return pd.read_sql_query(query, conn, params=params)
@@ -208,8 +215,30 @@ def resolve_concept_ids(
 
 def _coerce_concept_values(values: Iterable[Any]) -> list[int | str]:
     """Normalize a concept mapping into direct IDs or concept names."""
-    normalized: list[int | str] = []
-    for value in values:
+    if values is None:
+        return []
+
+    if isinstance(values, (str, int, float)):
+        return [values]
+
+    if isinstance(values, (list, tuple, set)):
+        normalized: list[int | str] = []
+        for value in values:
+            if isinstance(value, (list, tuple, set)):
+                normalized.extend(_coerce_concept_values(value))
+            elif isinstance(value, str):
+                normalized.append(value)
+            elif value is not None:
+                normalized.append(int(value))
+        return normalized
+
+    try:
+        iterator = list(values)
+    except TypeError:
+        return [values]
+
+    normalized = []
+    for value in iterator:
         if isinstance(value, (list, tuple, set)):
             normalized.extend(_coerce_concept_values(value))
         elif isinstance(value, str):

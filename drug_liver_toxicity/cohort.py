@@ -14,11 +14,17 @@ from .config import (
     MED_MEASUREMENT_CONCEPT_IDS,
     STUDY,
 )
+from .drug_concepts import resolve_drug_concept_ids_for_name
 from .sql_runner import (
+    _coerce_concept_values,
     _concept_ids_from_mapping,
     _drop_duplicate_rows,
     _resolve_sql_table_name,
     execute_sql,
+)
+from .study_concepts import (
+    resolve_lab_measurement_concept_ids,
+    resolve_liver_condition_concept_ids,
 )
 
 
@@ -119,50 +125,133 @@ def build_drug_cohort(
     if config.measurement_concept_ids is None:
         config.measurement_concept_ids = MED_MEASUREMENT_CONCEPT_IDS
 
-    drug_filters = config.drug_concept_filters or {}
     liver_filters = config.liver_concept_filters or {}
     measurement_filters = config.measurement_concept_filters or {}
 
-    resolved_drug = _concept_ids_from_mapping(
-        conn,
-        {
-            config.drug_name: config.drug_concept_ids.get(
-                config.drug_name, (config.drug_name,)
+    drug_concept_value_set = config.drug_concept_ids.get(config.drug_name, ())
+    if drug_concept_value_set:
+        if isinstance(drug_concept_value_set, (str, int, float)):
+            raw_ids = (drug_concept_value_set,)
+        else:
+            raw_ids = tuple(drug_concept_value_set)
+        resolved_drug = {
+            config.drug_name: tuple(
+                sorted({int(value) for value in raw_ids if value is not None})
             )
-        },
-        concept_table=config.concept_table,
-        concept_ancestor_table=config.concept_ancestor_table,
-        schema=config.schema,
-        project_id=config.project_id,
-        dataset_id=config.dataset_id,
-        filters=drug_filters,
-    )
+        }
+    else:
+        drug_df = resolve_drug_concept_ids_for_name(
+            conn,
+            config.drug_name,
+            concept_table=config.concept_table,
+            concept_ancestor_table=config.concept_ancestor_table,
+            schema=config.schema,
+            project_id=config.project_id,
+            dataset_id=config.dataset_id,
+        )
+        resolved_drug = {
+            config.drug_name: tuple(
+                sorted(
+                    {int(value) for value in drug_df["concept_id"].dropna().tolist()}
+                )
+            )
+        }
     drug_concept_id_values = resolved_drug.get(config.drug_name, ())
 
-    resolved_liver = _concept_ids_from_mapping(
-        conn,
-        config.liver_condition_concept_ids,
-        concept_table=config.concept_table,
-        concept_ancestor_table=config.concept_ancestor_table,
-        schema=config.schema,
-        project_id=config.project_id,
-        dataset_id=config.dataset_id,
-        filters=liver_filters,
-    )
+    liver_concept_value_set = config.liver_condition_concept_ids
+    if liver_concept_value_set:
+        if isinstance(liver_concept_value_set, dict):
+            resolved_liver = _concept_ids_from_mapping(
+                conn,
+                liver_concept_value_set,
+                concept_table=config.concept_table,
+                concept_ancestor_table=config.concept_ancestor_table,
+                schema=config.schema,
+                project_id=config.project_id,
+                dataset_id=config.dataset_id,
+                filters=liver_filters,
+            )
+        else:
+            resolved_liver = {
+                "liver_condition": tuple(
+                    sorted(
+                        {
+                            int(value)
+                            for value in liver_concept_value_set
+                            if value is not None
+                        }
+                    )
+                )
+            }
+    else:
+        resolved_liver_df = resolve_liver_condition_concept_ids(
+            conn,
+            concept_table=config.concept_table,
+            concept_ancestor_table=config.concept_ancestor_table,
+            schema=config.schema,
+            project_id=config.project_id,
+            dataset_id=config.dataset_id,
+        )
+        resolved_liver = {
+            "liver_condition": tuple(
+                sorted(
+                    {
+                        int(value)
+                        for value in resolved_liver_df["concept_id"].dropna().tolist()
+                    }
+                )
+            )
+        }
     liver_concept_ids = tuple(
         sorted({concept_id for ids in resolved_liver.values() for concept_id in ids})
     )
 
-    resolved_measurement = _concept_ids_from_mapping(
-        conn,
-        config.measurement_concept_ids,
-        concept_table=config.concept_table,
-        concept_ancestor_table=config.concept_ancestor_table,
-        schema=config.schema,
-        project_id=config.project_id,
-        dataset_id=config.dataset_id,
-        filters=measurement_filters,
-    )
+    measurement_concept_value_set = config.measurement_concept_ids
+    if measurement_concept_value_set:
+        if isinstance(measurement_concept_value_set, dict):
+            resolved_measurement = _concept_ids_from_mapping(
+                conn,
+                measurement_concept_value_set,
+                concept_table=config.concept_table,
+                concept_ancestor_table=config.concept_ancestor_table,
+                schema=config.schema,
+                project_id=config.project_id,
+                dataset_id=config.dataset_id,
+                filters=measurement_filters,
+            )
+        else:
+            resolved_measurement = {
+                "measurement": tuple(
+                    sorted(
+                        {
+                            int(value)
+                            for value in measurement_concept_value_set
+                            if value is not None
+                        }
+                    )
+                )
+            }
+    else:
+        resolved_measurement_df = resolve_lab_measurement_concept_ids(
+            conn,
+            concept_table=config.concept_table,
+            concept_ancestor_table=config.concept_ancestor_table,
+            schema=config.schema,
+            project_id=config.project_id,
+            dataset_id=config.dataset_id,
+        )
+        resolved_measurement = {
+            "measurement": tuple(
+                sorted(
+                    {
+                        int(value)
+                        for value in resolved_measurement_df["concept_id"]
+                        .dropna()
+                        .tolist()
+                    }
+                )
+            )
+        }
     measurement_concept_ids_flat = tuple(
         sorted(
             {concept_id for ids in resolved_measurement.values() for concept_id in ids}

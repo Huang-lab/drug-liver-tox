@@ -1,6 +1,6 @@
 """Configuration placeholders for a drug-specific liver toxicity study."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional
 
 # Default concept filters to restrict lookups by OMOP domain and common
@@ -48,10 +48,14 @@ class CohortConfig:
     drug_concept_ids: Optional[Mapping[str, Any]] = None
     liver_condition_concept_ids: Optional[Mapping[str, Any]] = None
     measurement_concept_ids: Optional[Mapping[str, Any]] = None
-    drug_concept_filters: Optional[Mapping[str, Any]] = DRUG_CONCEPT_FILTERS
-    liver_concept_filters: Optional[Mapping[str, Any]] = LIVER_CONCEPT_FILTERS
-    measurement_concept_filters: Optional[Mapping[str, Any]] = (
-        MEASUREMENT_CONCEPT_FILTERS
+    drug_concept_filters: Optional[Mapping[str, Any]] = field(
+        default_factory=lambda: dict(DRUG_CONCEPT_FILTERS)
+    )
+    liver_concept_filters: Optional[Mapping[str, Any]] = field(
+        default_factory=lambda: dict(LIVER_CONCEPT_FILTERS)
+    )
+    measurement_concept_filters: Optional[Mapping[str, Any]] = field(
+        default_factory=lambda: dict(MEASUREMENT_CONCEPT_FILTERS)
     )
     index_dataset: Optional[str] = None
     project_dataset: Optional[str] = None
