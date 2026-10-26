@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Tuple
 
 import pandas as pd
 
@@ -47,12 +47,13 @@ def build_drug_cohort(
     drug_concept_ids: Optional[Mapping[str, Any]] = None,
     liver_condition_concept_ids: Optional[Mapping[str, Any]] = None,
     measurement_concept_ids: Optional[Mapping[str, Any]] = None,
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, Mapping[str, int]]:
     """Build a cohort using a CohortConfig object or direct arguments.
 
     Most of the settings are typically supplied in the config object so callers
     only need to pass the connection and optionally a few overrides.
     """
+    stats = {}
     if config is None:
         config = CohortConfig(
             drug_name=drug_name or STUDY.drug_name,
@@ -282,6 +283,12 @@ def build_drug_cohort(
         project_id=config.project_id,
         dataset_id=config.dataset_id,
     )
+    concept_table_name = _resolve_sql_table_name(
+        config.concept_table,
+        schema=config.schema,
+        project_id=config.project_id,
+        dataset_id=config.dataset_id,
+    )
 
     if not drug_concept_id_values:
         return pd.DataFrame(columns=["person_id", "index_date"])
@@ -306,6 +313,7 @@ def build_drug_cohort(
         .first()
     )
     cohort = exposure.copy()
+    stats["exposed"] = len(cohort)
 
     if config.exclude_prior_liver_disease and liver_concept_ids:
         liver_ids_sql = ", ".join(str(int(value)) for value in liver_concept_ids)
@@ -333,6 +341,7 @@ def build_drug_cohort(
         )
         cohort = cohort[~cohort["person_id"].isin(excluded_people)].copy()
 
+    stats["after_prior_liver_dx"] = len(cohort)
     if config.exclude_baseline_abnormal_liver_tests and measurement_concept_ids_flat:
         lab_ids_sql = ", ".join(
             str(int(value)) for value in measurement_concept_ids_flat
@@ -392,12 +401,24 @@ def build_drug_cohort(
             ].copy()
             excluded_people = set(abnormal["person_id"].unique())
             cohort = cohort[~cohort["person_id"].isin(excluded_people)].copy()
+    stats["after_abnormal_liver_tests"] = len(cohort)
 
     if person_table_name:
         person_query = f"""
-            SELECT person_id, year_of_birth, sex_at_birth, race, ethnicity
-            FROM {person_table_name}
-            WHERE person_id IN (
+            SELECT
+                p.person_id,
+                p.year_of_birth,
+                sg.concept_name AS sex_at_birth,
+                rc.concept_name AS race,
+                ec.concept_name AS ethnicity
+            FROM {person_table_name} p
+            LEFT JOIN {concept_table_name} sg
+                ON p.gender_concept_id = sg.concept_id
+            LEFT JOIN {concept_table_name} rc
+                ON p.race_concept_id = rc.concept_id
+            LEFT JOIN {concept_table_name} ec
+                ON p.ethnicity_concept_id = ec.concept_id
+            WHERE p.person_id IN (
                 SELECT DISTINCT person_id
                 FROM (
                     SELECT person_id,
@@ -412,7 +433,7 @@ def build_drug_cohort(
         if not person.empty:
             cohort = cohort.merge(person, on="person_id", how="left")
 
-    return cohort.reset_index(drop=True)
+    return cohort.reset_index(drop=True), stats
 
 
 def build_cohort_from_sql_tables(

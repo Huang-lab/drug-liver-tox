@@ -17,6 +17,22 @@ def execute_sql(
     Supports pandas SQLAlchemy connections and BigQuery clients used by
     ResearchAllOfUs OMOP data extracts.
     """
+    if conn is None:
+        raise ValueError("A database connection or BigQuery client is required.")
+
+    if not (
+        hasattr(conn, "query")
+        and hasattr(conn, "project")
+        or hasattr(conn, "engine")
+        or hasattr(conn, "cursor")
+        or isinstance(conn, str)
+    ):
+        raise TypeError(
+            "Unsupported database connection type. "
+            "Pass a BigQuery client, SQLAlchemy engine/connection, "
+            "sqlite3 DBAPI connection, or a SQLAlchemy connection string."
+        )
+
     if hasattr(conn, "query") and hasattr(conn, "project"):
         try:
             job = conn.query(query)
@@ -36,11 +52,15 @@ def execute_sql(
 
     try:
         return pd.read_sql_query(query, conn, params=params)
-    except TypeError:
+    except (TypeError, AttributeError, ValueError) as exc:
         if hasattr(conn, "engine"):
             with conn.engine.connect() as connection:
                 return pd.read_sql_query(query, connection, params=params)
-        raise
+        raise TypeError(
+            "Could not execute SQL with the provided connection object. "
+            "Use a BigQuery client, SQLAlchemy connection/engine, or a "
+            "sqlite3 connection instead."
+        ) from exc
 
 
 def _resolve_sql_table_name(
