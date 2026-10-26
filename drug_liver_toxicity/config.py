@@ -79,11 +79,10 @@ DRUG_CONCEPT_IDS = {
 }
 
 LIVER_CONDITION_CONCEPT_IDS = {
-    "cirrhosis": 200,
-    "hepatitis_b": 201,
-    "hepatitis_c": 202,
-    "liver_failure": 203,
-    "chronic_liver_disease": 204,
+    "cirrhosis of liver": 200,
+    "inflammatory disease of liver": 201,
+    "hepatic failure": 202,
+    "chronic liver disease": 204,
 }
 
 MED_MEASUREMENT_CONCEPT_IDS = {
@@ -92,6 +91,47 @@ MED_MEASUREMENT_CONCEPT_IDS = {
     "bilirubin": 302,
     "alp": 303,
     "ggt": 304,
+}
+
+
+MEASUREMENT_CONCEPT_CODES = {
+    "alt": ("1742-6", "1743-4", "1744-2", "76625-3", "77144-4"),
+    "ast": ("30239-8", "88112-8", "1920-8"),
+    "bilirubin": ("1975-2"),
+    "alp": ("6768-6"),  # "77141-0", "1783-0",
+    "ggt": ("2324-2"),
+}
+
+
+# OMOP concept_name values are usually readable lab names rather than the
+# shorthand labels used in the study config. Keep canonical aliases so the
+# lookup can match the same lab across both naming conventions.
+MEASUREMENT_CONCEPT_ALIASES = {
+    "alt": (
+        "alt",
+        "alanine aminotransferase",
+        "alanine aminotransferase [enzyme]",
+    ),
+    "ast": (
+        "ast",
+        "aspartate aminotransferase",
+        "aspartate aminotransferase [enzyme]",
+    ),
+    "bilirubin": (
+        "bilirubin",
+        "total bilirubin",
+        "bilirubin.total",
+    ),
+    "alp": (
+        "alp",
+        "alkaline phosphatase",
+        "alkaline phosphatase [enzyme]",
+    ),
+    "ggt": (
+        "ggt",
+        "gamma glutamyl transferase",
+        "gamma glutamyl transferase [enzyme]",
+    ),
 }
 
 # Typical lab upper limits of normal (ULN) used in a first pass.

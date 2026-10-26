@@ -18,6 +18,13 @@ spec = importlib.util.spec_from_file_location("sql_runner", _sql_path)
 sr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sr)
 
+_config_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "drug_liver_toxicity", "config.py")
+)
+_config_spec = importlib.util.spec_from_file_location("config_module", _config_path)
+config_module = importlib.util.module_from_spec(_config_spec)
+_config_spec.loader.exec_module(config_module)
+
 
 def test_resolve_sql_table_name_variants():
     assert sr._resolve_sql_table_name("person") == "`person`"
@@ -145,3 +152,10 @@ def test_concept_ids_from_mapping_forwards_filters(monkeypatch):
 def test_concept_ids_from_mapping_empty_values():
     res = sr._concept_ids_from_mapping(None, {"a": []})
     assert res == {"a": ()}
+
+
+def test_measurement_aliases_cover_real_omop_names():
+    aliases = config_module.MEASUREMENT_CONCEPT_ALIASES["alt"]
+    assert "alt" in aliases
+    assert "alanine aminotransferase" in aliases
+    assert "alanine aminotransferase [enzyme]" in aliases

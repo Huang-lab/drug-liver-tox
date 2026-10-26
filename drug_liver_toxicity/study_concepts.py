@@ -6,7 +6,12 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from .config import LIVER_CONDITION_CONCEPT_IDS, MED_MEASUREMENT_CONCEPT_IDS
+from .config import (
+    LIVER_CONDITION_CONCEPT_IDS,
+    MEASUREMENT_CONCEPT_ALIASES,
+    MEASUREMENT_CONCEPT_CODES,
+    MED_MEASUREMENT_CONCEPT_IDS,
+)
 from .sql_runner import _resolve_sql_table_name, execute_sql
 
 
@@ -16,7 +21,7 @@ def _condition_sql_template(
     concept_ancestor_table_name: str,
     condition_name: str,
 ) -> str:
-    """Return the SQL used to resolve concept IDs for a named liver condition."""
+    """Return the SQL used to resolve concept IDs for a named condition."""
     value = condition_name.strip()
     if not value:
         raise ValueError("condition_name must be a non-empty string.")
@@ -43,11 +48,13 @@ def _measurement_sql_template(
     concept_ancestor_table_name: str,
     measurement_name: str,
 ) -> str:
-    """Return the SQL used to resolve concept IDs for a named lab measurement."""
+    """Return SQL used to resolve concept IDs for a lab measurement."""
     value = measurement_name.strip()
     if not value:
         raise ValueError("measurement_name must be a non-empty string.")
-    measurement_names = list(MED_MEASUREMENT_CONCEPT_IDS.keys())
+
+    measurement_codes = MEASUREMENT_CONCEPT_CODES.get(value.lower(), (value.lower(),))
+    measurement_codes_sql = ", ".join(f"'{n}'" for n in measurement_codes)
 
     return f"""
         SELECT DISTINCT cd.concept_name, cd.concept_id, cd.concept_class_id
@@ -56,7 +63,7 @@ def _measurement_sql_template(
           ON c.concept_id = ca.ancestor_concept_id
         JOIN {concept_table_name} cd
           ON ca.descendant_concept_id = cd.concept_id
-        WHERE LOWER(c.concept_name) in unnest({measurement_names})
+        WHERE LOWER(c.concept_code) in ({measurement_codes_sql})
           AND c.domain_id = 'Measurement'
           AND c.vocabulary_id = 'LOINC'
           AND c.standard_concept = 'S'
@@ -144,7 +151,7 @@ def resolve_liver_condition_concept_ids(
     project_id: Optional[str] = None,
     dataset_id: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Resolve liver condition concept IDs from the config names, or a single name."""
+    """Resolve liver condition concept IDs from the config names."""
     names = [condition_name] if condition_name else list(LIVER_CONDITION_CONCEPT_IDS)
     frames = []
     for name in names:
@@ -178,7 +185,7 @@ def resolve_lab_measurement_concept_ids(
     project_id: Optional[str] = None,
     dataset_id: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Resolve lab measurement concept IDs from the config names, or a single name."""
+    """Resolve lab measurement concept IDs from config names."""
     names = (
         [measurement_name] if measurement_name else list(MED_MEASUREMENT_CONCEPT_IDS)
     )
