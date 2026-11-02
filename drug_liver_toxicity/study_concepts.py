@@ -25,7 +25,6 @@ def _condition_sql_template(
     value = condition_name.strip()
     if not value:
         raise ValueError("condition_name must be a non-empty string.")
-    liver_concept_names = list(LIVER_CONDITION_CONCEPT_IDS.keys())
 
     return f"""
         SELECT DISTINCT cd.concept_name, cd.concept_id, cd.concept_class_id
@@ -34,7 +33,7 @@ def _condition_sql_template(
           ON c.concept_id = ca.ancestor_concept_id
         JOIN {concept_table_name} cd
           ON ca.descendant_concept_id = cd.concept_id
-        WHERE LOWER(c.concept_name) in unnest({liver_concept_names})
+        WHERE LOWER(c.concept_name) = lower('{value}')
           AND c.domain_id = 'Condition'
           AND c.vocabulary_id = 'SNOMED'
           AND c.standard_concept = 'S'
@@ -49,15 +48,16 @@ def _measurement_sql_template(
     measurement_name: str,
 ) -> str:
     """Return SQL used to resolve concept IDs for a lab measurement."""
-    value = measurement_name.strip()
-    if not value:
+    name = measurement_name.strip()
+    if not name:
         raise ValueError("measurement_name must be a non-empty string.")
 
-    measurement_codes = MEASUREMENT_CONCEPT_CODES.get(value.lower(), (value.lower(),))
+    measurement_codes = MEASUREMENT_CONCEPT_CODES.get(name.lower(), (name.lower(),))
     measurement_codes_sql = ", ".join(f"'{n}'" for n in measurement_codes)
 
     return f"""
-        SELECT DISTINCT cd.concept_name, cd.concept_id, cd.concept_class_id
+        SELECT DISTINCT '{name}' AS lab_name, c.concept_code AS loinc_code,
+            cd.concept_name AS lab_subtype, cd.concept_id, cd.concept_class_id
         FROM {concept_table_name} c
         JOIN {concept_ancestor_table_name} ca
           ON c.concept_id = ca.ancestor_concept_id

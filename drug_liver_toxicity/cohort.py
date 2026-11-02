@@ -47,7 +47,11 @@ def build_drug_cohort(
     drug_concept_ids: Optional[Mapping[str, Any]] = None,
     liver_condition_concept_ids: Optional[Mapping[str, Any]] = None,
     measurement_concept_ids: Optional[Mapping[str, Any]] = None,
-) -> Tuple[pd.DataFrame, Mapping[str, int]]:
+) -> Tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    Mapping[str, int],
+]:
     """Build a cohort using a CohortConfig object or direct arguments.
 
     Most of the settings are typically supplied in the config object so callers
@@ -119,13 +123,6 @@ def build_drug_cohort(
     if conn is None:
         raise ValueError("A database connection or engine is required.")
 
-    if config.drug_concept_ids is None:
-        config.drug_concept_ids = DRUG_CONCEPT_IDS
-    if config.liver_condition_concept_ids is None:
-        config.liver_condition_concept_ids = LIVER_CONDITION_CONCEPT_IDS
-    if config.measurement_concept_ids is None:
-        config.measurement_concept_ids = MED_MEASUREMENT_CONCEPT_IDS
-
     liver_filters = config.liver_concept_filters or {}
     measurement_filters = config.measurement_concept_filters or {}
 
@@ -157,7 +154,7 @@ def build_drug_cohort(
                 )
             )
         }
-    drug_concept_id_values = resolved_drug.get(config.drug_name, ())
+    drug_concept_id_values = list(resolved_drug.get(config.drug_name, ()))
 
     liver_concept_value_set = config.liver_condition_concept_ids
     if liver_concept_value_set:
@@ -232,6 +229,15 @@ def build_drug_cohort(
                     )
                 )
             }
+        measurement_concept_ids_flat = list(
+            sorted(
+                {
+                    concept_id
+                    for ids in resolved_measurement.values()
+                    for concept_id in ids
+                }
+            )
+        )
     else:
         resolved_measurement_df = resolve_lab_measurement_concept_ids(
             conn,
@@ -241,23 +247,14 @@ def build_drug_cohort(
             project_id=config.project_id,
             dataset_id=config.dataset_id,
         )
-        resolved_measurement = {
-            "measurement": tuple(
-                sorted(
-                    {
-                        int(value)
-                        for value in resolved_measurement_df["concept_id"]
-                        .dropna()
-                        .tolist()
-                    }
-                )
+        measurement_concept_ids_flat = list(
+            sorted(
+                {
+                    int(value)
+                    for value in resolved_measurement_df["concept_id"].dropna().tolist()
+                }
             )
-        }
-    measurement_concept_ids_flat = tuple(
-        sorted(
-            {concept_id for ids in resolved_measurement.values() for concept_id in ids}
         )
-    )
 
     exposure_table = _resolve_sql_table_name(
         config.drug_exposure_table,
@@ -291,7 +288,11 @@ def build_drug_cohort(
     )
 
     if not drug_concept_id_values:
-        return pd.DataFrame(columns=["person_id", "index_date"])
+        return (
+            pd.DataFrame(columns=["person_id", "index_date"]),
+            {},
+            pd.DataFrame(columns=["lab_name", "concept_id"]),
+        )
 
     drug_ids_sql = ", ".join(str(int(value)) for value in drug_concept_id_values)
     exposure_query = f"""
@@ -302,7 +303,11 @@ def build_drug_cohort(
     """
     exposure = execute_sql(conn, exposure_query)
     if exposure.empty:
-        return pd.DataFrame(columns=["person_id", "index_date"])
+        return (
+            pd.DataFrame(columns=["person_id", "index_date"]),
+            {},
+            pd.DataFrame(columns=["lab_name", "concept_id"]),
+        )
 
     exposure = _drop_duplicate_rows(
         exposure[["person_id", "index_date"]], ["person_id", "index_date"]
@@ -359,44 +364,109 @@ def build_drug_cohort(
             )
             SELECT m.person_id,
                    m.measurement_datetime,
+                   m.measurement_date,
                    m.measurement_concept_id,
                    m.value_as_number,
+                   m.unit_concept_id,
+                   coalesce(uc.concept_name, 'Missing') AS unit_name,
+                   m.range_low,
+                   m.range_high,
                    c.index_date
             FROM {measurement_table_name} m
             INNER JOIN cohort c
                 ON m.person_id = c.person_id
+            LEFT JOIN {concept_table_name} uc
+                ON m.unit_concept_id = uc.concept_id
             WHERE m.measurement_concept_id IN ({lab_ids_sql})
-              AND m.measurement_datetime < c.index_date
+              AND m.value_as_number IS NOT NULL
         """
         baseline = execute_sql(conn, baseline_query)
         if not baseline.empty:
+            baseline = baseline.merge(
+                resolved_measurement_df[["lab_name", "concept_id"]],
+                left_on="measurement_concept_id",
+                right_on="concept_id",
+                how="left",
+            )
+            bl_group = (
+                baseline.groupby(
+                    ["lab_name", "concept_id", "unit_name"], as_index=False
+                )
+                .agg(
+                    rcount=("value_as_number", "size"),
+                    min_val=("value_as_number", "min"),
+                    max_val=("value_as_number", "max"),
+                    avg_val=("value_as_number", "mean"),
+                )
+                .sort_values(["lab_name", "rcount"], ascending=[True, False])
+            )
             abnormal = baseline[
                 (
-                    (
-                        baseline["measurement_concept_id"]
-                        == resolved_measurement.get("alt", ())[0]
-                        if resolved_measurement.get("alt")
-                        else False
+                    (baseline["lab_name"] == "ast")
+                    & (
+                        (
+                            (baseline["index_date"] > baseline["measurement_datetime"])
+                            & (baseline["value_as_number"] >= 3 * LAB_ULN["ast"])
+                        )
+                        | (
+                            ~baseline["unit_name"]
+                            .str.lower()
+                            .isin(
+                                [
+                                    "unit per liter",
+                                    "no matching concept",
+                                    "missing",
+                                    "iu/l",
+                                    "international unit per liter",
+                                    "u/l",
+                                ]
+                            )
+                        )
                     )
-                    & (baseline["value_as_number"] >= 3 * LAB_ULN["alt"])
                 )
                 | (
-                    (
-                        baseline["measurement_concept_id"]
-                        == resolved_measurement.get("ast", ())[0]
-                        if resolved_measurement.get("ast")
-                        else False
+                    (baseline["lab_name"] == "alt")
+                    & (
+                        (
+                            (baseline["index_date"] > baseline["measurement_datetime"])
+                            & (baseline["value_as_number"] >= 3 * LAB_ULN["alt"])
+                        )
+                        | (
+                            ~baseline["unit_name"]
+                            .str.lower()
+                            .isin(
+                                [
+                                    "unit per liter",
+                                    "no matching concept",
+                                    "unit per liter",
+                                    "missing",
+                                    "iu/l",
+                                    "international unit per liter",
+                                    "u/l",
+                                ]
+                            )
+                        )
                     )
-                    & (baseline["value_as_number"] >= 3 * LAB_ULN["ast"])
                 )
                 | (
-                    (
-                        baseline["measurement_concept_id"]
-                        == resolved_measurement.get("bilirubin", ())[0]
-                        if resolved_measurement.get("bilirubin")
-                        else False
+                    (baseline["lab_name"] == "bilirubin")
+                    & (
+                        (
+                            (baseline["index_date"] > baseline["measurement_datetime"])
+                            & (baseline["value_as_number"] >= 2 * LAB_ULN["bilirubin"])
+                        )
+                        | (
+                            ~baseline["unit_name"]
+                            .str.lower()
+                            .isin(
+                                [
+                                    "milligram per deciliter",
+                                    "no matching concept",
+                                    "missing",
+                                ]
+                            )
+                        )
                     )
-                    & (baseline["value_as_number"] >= 2 * LAB_ULN["bilirubin"])
                 )
             ].copy()
             excluded_people = set(abnormal["person_id"].unique())
@@ -432,8 +502,48 @@ def build_drug_cohort(
         person = execute_sql(conn, person_query)
         if not person.empty:
             cohort = cohort.merge(person, on="person_id", how="left")
+        measurement_cohort_query = f"""
+            WITH cohort AS (
+                SELECT c.person_id, c.index_date
+                FROM (
+                    SELECT person_id,
+                           MIN(drug_exposure_start_datetime) AS index_date
+                    FROM {exposure_table}
+                    WHERE drug_concept_id IN ({drug_ids_sql})
+                    GROUP BY person_id
+                ) c
+            )
+            SELECT m.person_id,
+                   m.measurement_datetime,
+                   m.measurement_date,
+                   m.measurement_concept_id,
+                   m.value_as_number,
+                   m.unit_concept_id,
+                   coalesce(uc.concept_name, 'Missing') AS unit_name,
+                   m.range_low,
+                   m.range_high,
+                   c.index_date
+            FROM {measurement_table_name} m
+            INNER JOIN cohort c
+                ON m.person_id = c.person_id
+            LEFT JOIN {concept_table_name} uc
+                ON m.unit_concept_id = uc.concept_id
+            WHERE m.measurement_concept_id IN ({lab_ids_sql})
+              AND m.value_as_number IS NOT NULL
+        """
+        measurement_cohort = execute_sql(conn, measurement_cohort_query)
+        measurement_cohort = measurement_cohort.merge(
+            resolved_measurement_df[["lab_name", "concept_id"]],
+            left_on="measurement_concept_id",
+            right_on="concept_id",
+            how="left",
+        )
 
-    return cohort.reset_index(drop=True), stats
+    return (
+        cohort.reset_index(drop=True),
+        measurement_cohort.reset_index(drop=True),
+        stats,
+    )
 
 
 def build_cohort_from_sql_tables(

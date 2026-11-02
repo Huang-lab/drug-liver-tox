@@ -1,6 +1,7 @@
 """Configuration placeholders for a drug-specific liver toxicity study."""
 
 from dataclasses import dataclass, field
+from turtle import pd
 from typing import Any, Mapping, Optional
 
 # Default concept filters to restrict lookups by OMOP domain and common
@@ -97,11 +98,62 @@ MED_MEASUREMENT_CONCEPT_IDS = {
 MEASUREMENT_CONCEPT_CODES = {
     "alt": ("1742-6", "1743-4", "1744-2", "76625-3", "77144-4"),
     "ast": ("30239-8", "88112-8", "1920-8"),
-    "bilirubin": ("1975-2"),
-    "alp": ("6768-6"),  # "77141-0", "1783-0",
-    "ggt": ("2324-2"),
+    "bilirubin": ("1975-2",),
+    "alp": ("6768-6",),  # "77141-0", "1783-0",
+    "ggt": ("2324-2",),
 }
 
+NEASUREMENT_UNITS = {
+    "alt": [
+        "unit per liter",
+        "no matching concept",
+        "unit per liter",
+        "missing",
+        "iu/l",
+        "international unit per liter",
+        "u/l",
+    ],
+    "ast": [
+        "unit per liter",
+        "no matching concept",
+        "missing",
+        "iu/l",
+        "international unit per liter",
+        "u/l",
+    ],
+    "bilirubin": [
+        "milligram per deciliter",
+        "no matching concept",
+        "missing",
+    ],
+    "alp": [
+        "unit per liter",
+        "no matching concept",
+        "missing",
+        "iu/l",
+        "international unit per liter",
+        "u/l",
+    ],
+    "ggt": [
+        "unit per liter",
+        "no matching concept",
+        "missing",
+        "iu/l",
+        "international unit per liter",
+        "u/l",
+    ],
+}
+
+MEASUREMENT_UNITS_DF = (
+    pd.DataFrame(
+        {
+            "lab_name": list(NEASUREMENT_UNITS.keys()),
+            "unit_name": list(NEASUREMENT_UNITS.values()),
+        }
+    )
+    .explode("unit_name")
+    .reset_index(drop=True)
+)
 
 # OMOP concept_name values are usually readable lab names rather than the
 # shorthand labels used in the study config. Keep canonical aliases so the
