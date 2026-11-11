@@ -286,6 +286,7 @@ def build_drug_cohort(
         project_id=config.project_id,
         dataset_id=config.dataset_id,
     )
+    person_index_table_name = f"`{config.index_dataset}.{config.person_index_table}`"
 
     if not drug_concept_id_values:
         return (
@@ -480,8 +481,12 @@ def build_drug_cohort(
                 p.year_of_birth,
                 sg.concept_name AS sex_at_birth,
                 rc.concept_name AS race,
-                ec.concept_name AS ethnicity
+                ec.concept_name AS ethnicity,
+                pi.has_whole_genome_variant,
+                pi.has_proteomics_data
             FROM {person_table_name} p
+            JOIN {person_index_table_name} pi
+                ON p.person_id = pi.person_id
             LEFT JOIN {concept_table_name} sg
                 ON p.gender_concept_id = sg.concept_id
             LEFT JOIN {concept_table_name} rc

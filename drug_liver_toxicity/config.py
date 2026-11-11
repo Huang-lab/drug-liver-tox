@@ -43,6 +43,7 @@ class CohortConfig:
     person_table: str = "person"
     concept_table: str = "concept"
     concept_ancestor_table: str = "concept_ancestor"
+    person_index_table: str = "T_ENT_person"
     schema: Optional[str] = None
     project_id: Optional[str] = None
     dataset_id: Optional[str] = None
@@ -58,7 +59,8 @@ class CohortConfig:
     measurement_concept_filters: Optional[Mapping[str, Any]] = field(
         default_factory=lambda: dict(MEASUREMENT_CONCEPT_FILTERS)
     )
-    index_dataset: Optional[str] = None
+    index_dataset: Optional[str] = "wb-silky-artichoke-2408.C2025Q4R6_index_061026"
+
     project_dataset: Optional[str] = None
 
 
