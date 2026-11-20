@@ -1,8 +1,9 @@
 """Configuration placeholders for a drug-specific liver toxicity study."""
 
 from dataclasses import dataclass, field
-from turtle import pd
 from typing import Any, Mapping, Optional
+
+import pandas as pd
 
 # Default concept filters to restrict lookups by OMOP domain and common
 # vocabulary/standard-concept constraints. These defaults reduce ambiguous
